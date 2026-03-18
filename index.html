@@ -357,7 +357,7 @@
 
             try {
                 const query = myStocks.join(',');
-                const response = await fetch(`http://localhost:8000/api/market?symbols=${query}`);
+                const response = await fetch(`/api/market?symbols=${query}`);
                 const data = await response.json();
                 
                 dashboard.innerHTML = '';
@@ -407,7 +407,7 @@
 
         async function renderSparkline(symbol, isUp) {
             try {
-                const res = await fetch(`http://localhost:8000/api/stock/${symbol}/intraday`);
+                const res = await fetch(`/api/stock/${symbol}/intraday`);
                 const json = await res.json();
                 if (json.status !== 'success' || !json.data || json.data.length === 0) return;
 
@@ -468,7 +468,7 @@
             }
 
             // SSE Request
-            currentAiStream = new EventSource(`http://localhost:8000/api/stock/${symbol}/analyze`);
+            currentAiStream = new EventSource(`/api/stock/${symbol}/analyze`);
             let accumulatedText = "";
 
             currentAiStream.onmessage = function(event) {
