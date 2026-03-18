@@ -205,9 +205,63 @@
                         <span class="price ${changeClass}">${price.toFixed(2)}</span>
                         <span class="change-badge ${changeClass}">${sign}${changePct}%</span>
                     </div>
+                    <div class="chart-container" id="chart-${stock['代码']}" style="height: 50px; margin-top: 10px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); line-height: 50px; text-align: center;">加载分时图...</div>
+                    </div>
                 `;
                 dashboard.appendChild(card);
+                
+                // Fetch intraday chart data asynchronously
+                fetchChartData(stock['代码']);
             });
+        }
+
+        async function fetchChartData(symbol) {
+            try {
+                const res = await fetch(`/api/stock/${symbol}/intraday`);
+                const json = await res.json();
+                const container = document.getElementById(`chart-${symbol}`);
+                if (!container) return;
+                
+                if (json.status === 'success' && json.data.length > 0) {
+                    container.innerHTML = generateSparkline(json.data);
+                } else {
+                    container.innerHTML = '<div style="font-size: 11px; color: var(--text-secondary); line-height: 50px; text-align: center;">无分时数据</div>';
+                }
+            } catch (e) {
+                const container = document.getElementById(`chart-${symbol}`);
+                if (container) container.innerHTML = '<div style="font-size: 11px; color: var(--down-color); line-height: 50px; text-align: center;">加载失败</div>';
+            }
+        }
+
+        function generateSparkline(data) {
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const range = (max - min) || 1;
+            const width = 100;
+            const height = 40;
+            
+            const points = data.map((val, i) => {
+                const x = (i / (data.length - 1)) * width;
+                const y = height - ((val - min) / range) * height;
+                return `${x},${y}`;
+            }).join(' ');
+            
+            const isUp = data[data.length - 1] >= data[0];
+            const color = isUp ? 'var(--up-color)' : 'var(--down-color)';
+            const gradientId = `grad-${Math.random().toString(36).substr(2,9)}`;
+            
+            return `
+            <svg viewBox="0 -5 100 50" class="sparkline" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="${color}" stop-opacity="0.2" />
+                        <stop offset="100%" stop-color="${color}" stop-opacity="0" />
+                    </linearGradient>
+                </defs>
+                <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polygon points="${points} 100,50 0,50" fill="url(#${gradientId})" />
+            </svg>`;
         }
 
         // 初始化加载
