@@ -4,3 +4,4 @@ requests
 akshare
 pandas
 sse-starlette
+asgireval
