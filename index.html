@@ -202,8 +202,8 @@
                         <div class="stock-code">${stock['代码']}</div>
                     </div>
                     <div class="price-section">
-                        <span class="price ${changeClass}">${price === '-' ? '-' : Number(price).toFixed(2)}</span>
-                        <span class="change-badge ${changeClass}">${sign}${changePct === '-' ? '-' : changePct + '%'}</span>
+                        <span class="price ${changeClass}">${price.toFixed(2)}</span>
+                        <span class="change-badge ${changeClass}">${sign}${changePct}%</span>
                     </div>
                 `;
                 dashboard.appendChild(card);
