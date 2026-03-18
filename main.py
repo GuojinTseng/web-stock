@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 import uvicorn
+import akshare as ak
 
 # For the AI Analysis
 try:
@@ -37,12 +38,13 @@ def apply_proxy_if_available():
         try:
             proxies, proxy_ip = get_proxy()
             proxy_url = proxies.get("https") or proxies.get("http")
-            # We fetch a proxy but DO NOT inject it globally as it breaks Tencent API.
-            # Instead we'll leave it available if needed for specific DeepSeek calls.
-            # if proxy_url:
-            #     os.environ["HTTP_PROXY"] = proxy_url
-            #     os.environ["HTTPS_PROXY"] = proxy_url
-            #     print(f"[Proxy Configured] IP: {proxy_ip}")
+            if proxy_url:
+                os.environ["HTTP_PROXY"] = proxy_url
+                os.environ["HTTPS_PROXY"] = proxy_url
+                # Clean up any NO_PROXY that might interfere
+                if "NO_PROXY" in os.environ:
+                    del os.environ["NO_PROXY"]
+                print(f"[Proxy Configured] IP: {proxy_ip}")
         except Exception as e:
             print(f"[Proxy Error] {e}")
 
@@ -60,31 +62,47 @@ async def serve_frontend():
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
 
+import time
+
+def call_akshare_with_retry(func, *args, retries=3, **kwargs):
+    """
+    Wrap Akshare calls to handle proxy disconnection by refreshing the proxy.
+    """
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"[Akshare] Attempt {attempt+1} failed: {e}")
+            if attempt < retries - 1:
+                print("[Akshare] Refreshing proxy and retrying...")
+                apply_proxy_if_available()
+                time.sleep(1)
+            else:
+                raise e
+
 @app.get("/api/market")
 async def get_market_data(symbols: str = ""):
     try:
         if not symbols:
-            # Fallback default if not provided
             symbols = "sh600519,sz000858,sz000001"
             
-        url = f"https://qt.gtimg.cn/q={symbols}"
-        # Force ignore proxy for this specific call to prevent hanging
-        res = requests.get(url, timeout=10, proxies={"http": None, "https": None})
+        dataset = call_akshare_with_retry(ak.stock_zh_a_spot_em)
         data = []
-        for line in res.text.strip().split('\n'):
-            if not line: continue
-            parts = line.split('=')[1].strip('"').split('~')
-            if len(parts) > 32:
-                name = parts[1]
-                full_code = line.split('=')[0].split('_')[1]
-                price = float(parts[3])
-                change_pct = float(parts[32])
-                data.append({
-                    "代码": full_code,
-                    "名称": name,
-                    "最新价": price,
-                    "涨跌幅": change_pct
-                })
+        target_codes = [s.strip() for s in symbols.split(',') if s.strip()]
+        target_bare_codes = [s[2:] for s in target_codes if len(s) > 2]
+        
+        filtered = dataset[dataset['代码'].isin(target_bare_codes)]
+        for _, row in filtered.iterrows():
+            bare_code = str(row['代码'])
+            prefix = "sh" if bare_code.startswith(("6", "9")) else "sz"
+            full_code = f"{prefix}{bare_code}"
+            
+            data.append({
+                "代码": full_code,
+                "名称": row['名称'],
+                "最新价": float(row['最新价']) if not type(row['最新价']) == str else 0.0,
+                "涨跌幅": float(row['涨跌幅']) if not type(row['涨跌幅']) == str else 0.0
+            })
         return {"status": "success", "data": data}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -92,16 +110,11 @@ async def get_market_data(symbols: str = ""):
 @app.get("/api/stock/{symbol}/intraday")
 async def get_intraday_data(symbol: str):
     try:
-        url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={symbol}"
-        # Force ignore proxy for this specific call to prevent hanging
-        res = requests.get(url, timeout=10, proxies={"http": None, "https": None})
-        json_data = res.json()
-        
-        if json_data['code'] != 0:
+        df = call_akshare_with_retry(ak.stock_intraday_em, symbol=symbol)
+        if df.empty:
             return {"status": "error", "message": "No data"}
             
-        points_data = json_data['data'][symbol]['data']['data']
-        prices = [float(p.split(' ')[1]) for p in points_data]
+        prices = df['成交价'].astype(float).tolist()
         
         # Downsample to ~50 points so it renders fast in SVG
         step = max(1, len(prices) // 50)
