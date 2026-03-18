@@ -1,8 +1,8 @@
 import os
+import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-import akshare as ak
 import uvicorn
 
 app = FastAPI(title="Web Stock Data")
@@ -16,6 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+POPULAR_STOCKS = [
+    "sh600519", "sz000858", "sh600036", "sh601318", "sz000333", "sz002594", 
+    "sh600276", "sh601888", "sz000001", "sh601012", "sz000651", "sh600030", 
+    "sh601166", "sh601328", "sh601288", "sh601988", "sh600900", "sz002415", 
+    "sh600887", "sz000002", "sh600104", "sh601628", "sz002714", "sh600438", 
+    "sh600009", "sh600690", "sz002304", "sh601899", "sh603259", "sz002475",
+    "sh601088", "sz000568", "sh600048", "sh601668", "sz002142", "sh601398",
+    "sz000157", "sh601816", "sh601319", "sz002493"
+]
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
     with open("index.html", "r", encoding="utf-8") as f:
@@ -24,24 +34,39 @@ async def serve_frontend():
 @app.get("/api/market")
 async def get_market_data():
     try:
-        # 获取最新 A 股实时行情数据（东方财富）
-        dataset = ak.stock_zh_a_spot_em()
-        
-        # 为了演示响应速度，只取前 40 支股票
-        top_stocks = dataset.head(40).to_dict(orient="records")
-        return {"status": "success", "data": top_stocks}
+        url = f"https://qt.gtimg.cn/q={','.join(POPULAR_STOCKS)}"
+        res = requests.get(url, timeout=10)
+        data = []
+        for line in res.text.strip().split('\n'):
+            if not line: continue
+            parts = line.split('=')[1].strip('"').split('~')
+            if len(parts) > 32:
+                name = parts[1]
+                full_code = line.split('=')[0].split('_')[1]
+                price = float(parts[3])
+                change_pct = float(parts[32])
+                data.append({
+                    "代码": full_code,
+                    "名称": name,
+                    "最新价": price,
+                    "涨跌幅": change_pct
+                })
+        return {"status": "success", "data": data}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/stock/{symbol}/intraday")
 async def get_intraday_data(symbol: str):
     try:
-        df = ak.stock_intraday_em(symbol=symbol)
-        if df.empty:
-            return {"status": "error", "message": "No data"}
+        url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={symbol}"
+        res = requests.get(url, timeout=10)
+        json_data = res.json()
         
-        # We only need '成交价' for a sparkline
-        prices = df['成交价'].astype(float).tolist()
+        if json_data['code'] != 0:
+            return {"status": "error", "message": "No data"}
+            
+        points_data = json_data['data'][symbol]['data']['data']
+        prices = [float(p.split(' ')[1]) for p in points_data]
         
         # Downsample to ~50 points so it renders fast in SVG
         step = max(1, len(prices) // 50)
