@@ -358,11 +358,12 @@
             try {
                 const query = myStocks.join(',');
                 const response = await fetch(`/api/market?symbols=${query}`);
-                const data = await response.json();
+                const json = await response.json();
                 
                 dashboard.innerHTML = '';
                 
-                data.forEach(item => {
+                if (json.status === 'success' && Array.isArray(json.data)) {
+                    json.data.forEach(item => {
                     const changePct = parseFloat(item['涨跌幅']);
                     const price = parseFloat(item['最新价']);
                     const name = item['名称'];
@@ -401,6 +402,9 @@
                     // Fetch and render the graph
                     renderSparkline(symbol, isUp);
                 });
+                } else {
+                    dashboard.innerHTML = `<div class="error">获取数据失败：${json.message || '未知错误'}</div>`;
+                }
             } catch (error) {
                 console.error('Error fetching data:', error);
                 dashboard.innerHTML = '<div class="loading" style="color:var(--down-color);">数据加载失败，请检查后端运行状态。</div>';
