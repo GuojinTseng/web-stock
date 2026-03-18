@@ -1,9 +1,24 @@
 import os
 import requests
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 import uvicorn
+import asgireval
+
+# For the AI Analysis
+try:
+    import deepseek_client
+except ImportError:
+    deepseek_client = None
+
+# For IP Proxy Pool
+try:
+    from ip import get_proxy
+except ImportError:
+    get_proxy = None
+
 
 app = FastAPI(title="Web Stock Data")
 
@@ -16,15 +31,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-POPULAR_STOCKS = [
-    "sh600519", "sz000858", "sh600036", "sh601318", "sz000333", "sz002594", 
-    "sh600276", "sh601888", "sz000001", "sh601012", "sz000651", "sh600030", 
-    "sh601166", "sh601328", "sh601288", "sh601988", "sh600900", "sz002415", 
-    "sh600887", "sz000002", "sh600104", "sh601628", "sz002714", "sh600438", 
-    "sh600009", "sh600690", "sz002304", "sh601899", "sh603259", "sz002475",
-    "sh601088", "sz000568", "sh600048", "sh601668", "sz002142", "sh601398",
-    "sz000157", "sh601816", "sh601319", "sz002493"
-]
+# Apply proxy for testing if needed
+# Note: For EastMoney requests in production you'd use get_proxy() and inject via os.environ HTTP_PROXY
+def apply_proxy_if_available():
+    if get_proxy:
+        try:
+            proxies, proxy_ip = get_proxy()
+            proxy_url = proxies.get("https") or proxies.get("http")
+            if proxy_url:
+                os.environ["HTTP_PROXY"] = proxy_url
+                os.environ["HTTPS_PROXY"] = proxy_url
+                print(f"[Proxy Configured] IP: {proxy_ip}")
+        except Exception as e:
+            print(f"[Proxy Error] {e}")
+
+# Configure deepseek via environment variable
+dp_key = os.environ.get("DEEPSEEK_API_KEY", "")
+if deepseek_client and dp_key:
+    deepseek_client.configure(dp_key)
+
+# (Removed hardcoded POPULAR_STOCKS)
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
@@ -32,9 +58,13 @@ async def serve_frontend():
         return f.read()
 
 @app.get("/api/market")
-async def get_market_data():
+async def get_market_data(symbols: str = ""):
     try:
-        url = f"https://qt.gtimg.cn/q={','.join(POPULAR_STOCKS)}"
+        if not symbols:
+            # Fallback default if not provided
+            symbols = "sh600519,sz000858,sz000001"
+            
+        url = f"https://qt.gtimg.cn/q={symbols}"
         res = requests.get(url, timeout=10)
         data = []
         for line in res.text.strip().split('\n'):
@@ -75,7 +105,53 @@ async def get_intraday_data(symbol: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/stock/{symbol}/analyze")
+async def analyze_stock(symbol: str):
+    if not deepseek_client or not deepseek_client.is_configured():
+        async def mock_stream():
+            yield "data: ⚠️ 未配置 DeepSeek API 密钥，AI 诊断暂不可用。\n\n"
+        return StreamingResponse(mock_stream(), media_type="text/event-stream")
+
+    try:
+        # First grab some very basic context to feed the AI
+        url = f"https://qt.gtimg.cn/q={symbol}"
+        res = requests.get(url, timeout=5)
+        text_data = res.text
+        
+        # We craft a quick real-time prompt
+        messages = deepseek_client.build_realtime_analysis_prompt(symbol, text_data, "")
+
+        async def stream_generator():
+            # The deepseek_client.chat_stream is synchronous, so we run it in a thread or just iterate
+            # Since fastAPI async routes block thread if we do blocking I/O, we should use threadpool
+            def sync_stream():
+                for chunk in deepseek_client.chat_stream(messages, max_tokens=1500):
+                    yield chunk
+
+            # A very simple wrapper to make sync generator async compatible enough for StreamingResponse
+            # To do this robustly in prod, using anyio to unblock is best
+            loop = asyncio.get_event_loop()
+            iterator = iter(sync_stream())
+            while True:
+                try:
+                    chunk = await loop.run_in_executor(None, next, iterator)
+                    # Format for SSE
+                    line = chunk.replace('\n', '\\n')
+                    yield f"data: {chunk}\n\n"
+                except StopIteration:
+                    break
+                except Exception as e:
+                    yield f"data: [error: {e}]\n\n"
+                    break
+
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+    except Exception as e:
+        async def err_stream():
+            yield f"data: ⚠️ 生成报告时出错：{e}\n\n"
+        return StreamingResponse(err_stream(), media_type="text/event-stream")
+
 if __name__ == "__main__":
+    apply_proxy_if_available()
     # Zeabur 部署时会自动注入 PORT 环境变量
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)

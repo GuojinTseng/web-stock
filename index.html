@@ -74,6 +74,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 1.5rem;
+            margin-top: 1.5rem;
         }
         .card {
             background: var(--panel-bg);
@@ -86,6 +87,7 @@
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            position: relative;
         }
         .card:hover {
             transform: translateY(-4px);
@@ -95,6 +97,11 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
+        }
+        .stock-name-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         .stock-name {
             font-size: 1.125rem;
@@ -129,18 +136,125 @@
             align-items: center;
             gap: 0.25rem;
         }
-        .up { 
-            color: var(--up-color); 
+        .up { color: var(--up-color); }
+        .down { color: var(--down-color); }
+        .change-badge.up { background: var(--up-bg); }
+        .change-badge.down { background: var(--down-bg); }
+        
+        .card-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
         }
-        .down { 
-            color: var(--down-color); 
+        .btn-sm {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+            padding: 0.4rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s;
         }
-        .change-badge.up {
-            background: var(--up-bg);
+        .btn-sm:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-primary);
         }
-        .change-badge.down {
-            background: var(--down-bg);
+        .btn-ai {
+            color: #d1d5db;
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(168,85,247,0.2) 100%);
+            border-color: rgba(168,85,247,0.3);
         }
+        .btn-ai:hover {
+            background: linear-gradient(135deg, rgba(99,102,241,0.4) 0%, rgba(168,85,247,0.4) 100%);
+            color: white;
+            box-shadow: 0 0 10px rgba(168,85,247,0.3);
+        }
+        
+        /* Add Stock Banner */
+        .add-stock-banner {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            background: var(--panel-bg);
+            padding: 1rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .add-input {
+            flex: 1;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 0.6rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .add-input:focus { border-color: var(--accent); }
+        
+        /* Modal for AI */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #1e293b;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            border-radius: 1rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            background: linear-gradient(to right, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+        .modal-close {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 1.5rem; cursor: pointer; line-height: 1;
+        }
+        .modal-close:hover { color: white; }
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            color: #e2e8f0;
+            line-height: 1.6;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+        }
+        .cursor-blink {
+            display: inline-block;
+            width: 8px; height: 16px;
+            background: #a78bfa;
+            animation: blink 1s step-end infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+        }
+        
         .loading {
             grid-column: 1 / -1;
             text-align: center;
@@ -153,6 +267,9 @@
             0%, 100% { opacity: 1; }
             50% { opacity: .5; }
         }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -161,111 +278,229 @@
             <h1>Web Stock 行情概览</h1>
             <button class="refresh-btn" onclick="fetchData()">刷新数据</button>
         </header>
+
+        <div class="add-stock-banner">
+            <input type="text" id="newStockInput" class="add-input" placeholder="输入股票代码 (如 sh600519 或 sz000001)" onkeypress="if(event.key==='Enter') addStock()">
+            <button class="refresh-btn" onclick="addStock()">+ 添加自选</button>
+        </div>
+
         <div class="dashboard" id="dashboard">
-            <div class="loading">正在获取沪深 A 股实时行情，请稍候...</div>
+            <div class="loading">正在加载自选股...</div>
+        </div>
+    </div>
+
+    <!-- AI Modal -->
+    <div class="modal" id="aiModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="aiModalTitle">DeepSeek 行情诊断</h2>
+                <button class="modal-close" onclick="closeAiModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="aiModalBody">
+            </div>
         </div>
     </div>
 
     <script>
+        // Use local storage to persist user stocks
+        const DEFAULT_STOCKS = ["sh600519", "sz000858", "sh601318", "sz002594", "sz000001", "sz000333"];
+        let myStocks = [];
+
+        function loadStocks() {
+            const saved = localStorage.getItem('webStocks');
+            if (saved) {
+                try { myStocks = JSON.parse(saved); } catch(e){}
+            }
+            if (!myStocks || myStocks.length === 0) {
+                myStocks = [...DEFAULT_STOCKS];
+                saveStocks();
+            }
+        }
+
+        function saveStocks() {
+            localStorage.setItem('webStocks', JSON.stringify(myStocks));
+        }
+
+        function addStock() {
+            const input = document.getElementById('newStockInput');
+            let code = input.value.trim().toLowerCase();
+            if (!code) return;
+            // Simple validation
+            if (!code.startsWith('sh') && !code.startsWith('sz')) {
+                alert("请输入以 sh 或 sz 开头的完整股票代码，例如: sh600519");
+                return;
+            }
+            if (myStocks.includes(code)) {
+                alert("该自选股已存在");
+                return;
+            }
+            myStocks.push(code);
+            saveStocks();
+            input.value = '';
+            fetchData();
+        }
+
+        function removeStock(code) {
+            myStocks = myStocks.filter(s => s !== code);
+            saveStocks();
+            fetchData();
+        }
+
         async function fetchData() {
+            loadStocks();
             const dashboard = document.getElementById('dashboard');
-            dashboard.innerHTML = '<div class="loading">刷新中...</div>';
+            
+            if (myStocks.length === 0) {
+                dashboard.innerHTML = '<div class="loading">暂无自选股，请在上方添加</div>';
+                return;
+            }
+
             try {
-                const res = await fetch('/api/market');
-                const json = await res.json();
-                if (json.status === 'success') {
-                    renderData(json.data);
-                } else {
-                    dashboard.innerHTML = `<div style="color: var(--up-color); grid-column: 1/-1;">获取数据失败: ${json.message}</div>`;
-                }
-            } catch (e) {
-                dashboard.innerHTML = `<div style="color: var(--up-color); grid-column: 1/-1;">网络请求错误: ${e.message}</div>`;
+                const query = myStocks.join(',');
+                const response = await fetch(`http://localhost:8000/api/market?symbols=${query}`);
+                const data = await response.json();
+                
+                dashboard.innerHTML = '';
+                
+                data.forEach(item => {
+                    const changePct = parseFloat(item.change_percent);
+                    const price = parseFloat(item.price);
+                    
+                    const isUp = changePct >= 0;
+                    const changeClass = isUp ? 'up' : 'down';
+                    const changeSign = isUp ? '+' : '';
+                    
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <div class="stock-header">
+                            <div class="stock-name-group">
+                                <div class="stock-name">${item.name}</div>
+                                <div class="stock-code">${item.symbol.toUpperCase()}</div>
+                            </div>
+                            <div class="change-badge ${changeClass}">
+                                ${changeSign}${item.change_percent}%
+                            </div>
+                        </div>
+                        <div class="price-section">
+                            <div class="price ${changeClass}">${item.price}</div>
+                        </div>
+                        <div class="chart-container" style="height: 50px; margin-top: 10px;">
+                            <svg class="chart" id="chart-${item.symbol}" viewBox="0 -5 100 50" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
+                            </svg>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn-sm btn-ai" onclick="openAiModal('${item.symbol}', '${item.name}')">DeepSeek 诊断</button>
+                            <button class="btn-sm" onclick="removeStock('${item.symbol}')">移除</button>
+                        </div>
+                    `;
+                    dashboard.appendChild(card);
+
+                    // Fetch and render the graph
+                    renderSparkline(item.symbol, isUp);
+                });
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                dashboard.innerHTML = '<div class="loading" style="color:var(--down-color);">数据加载失败，请检查后端运行状态。</div>';
             }
         }
 
-        function renderData(data) {
-            const dashboard = document.getElementById('dashboard');
-            dashboard.innerHTML = '';
-            
-            data.forEach(stock => {
-                const changePct = stock['涨跌幅'];
-                const price = stock['最新价'];
-                const isUp = changePct >= 0;
-                const changeClass = isUp ? 'up' : 'down';
-                const sign = isUp ? '+' : '';
-
-                const card = document.createElement('div');
-                card.className = 'card';
-                card.innerHTML = `
-                    <div class="stock-header">
-                        <div class="stock-name">${stock['名称']}</div>
-                        <div class="stock-code">${stock['代码']}</div>
-                    </div>
-                    <div class="price-section">
-                        <span class="price ${changeClass}">${price.toFixed(2)}</span>
-                        <span class="change-badge ${changeClass}">${sign}${changePct}%</span>
-                    </div>
-                    <div class="chart-container" id="chart-${stock['代码']}" style="height: 50px; margin-top: 10px;">
-                        <div style="font-size: 11px; color: var(--text-secondary); line-height: 50px; text-align: center;">加载分时图...</div>
-                    </div>
-                `;
-                dashboard.appendChild(card);
-                
-                // Fetch intraday chart data asynchronously
-                fetchChartData(stock['代码']);
-            });
-        }
-
-        async function fetchChartData(symbol) {
+        async function renderSparkline(symbol, isUp) {
             try {
-                const res = await fetch(`/api/stock/${symbol}/intraday`);
+                const res = await fetch(`http://localhost:8000/api/stock/${symbol}/intraday`);
                 const json = await res.json();
-                const container = document.getElementById(`chart-${symbol}`);
-                if (!container) return;
+                if (json.status !== 'success' || !json.data || json.data.length === 0) return;
+
+                const prices = json.data;
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                const range = (maxPrice - minPrice) || 1; 
+
+                // SVG Path Generation for viewBox="0 -5 100 50"
+                const width = 100;
+                const height = 40;
                 
-                if (json.status === 'success' && json.data.length > 0) {
-                    container.innerHTML = generateSparkline(json.data);
-                } else {
-                    container.innerHTML = '<div style="font-size: 11px; color: var(--text-secondary); line-height: 50px; text-align: center;">无分时数据</div>';
+                const points = prices.map((val, i) => {
+                    const x = (i / (prices.length - 1)) * width;
+                    const y = height - ((val - minPrice) / range) * height;
+                    return `${x},${y}`;
+                }).join(' ');
+
+                const svg = document.getElementById(`chart-${symbol}`);
+                if (svg) {
+                    const color = isUp ? 'var(--up-color)' : 'var(--down-color)';
+                    const gradientId = `grad-${symbol}-${Math.random().toString(36).substr(2,9)}`;
+                    svg.innerHTML = `
+                        <defs>
+                            <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="${color}" stop-opacity="0.2" />
+                                <stop offset="100%" stop-color="${color}" stop-opacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <polygon points="${points} ${width},${height} 0,${height}" fill="url(#${gradientId})" />
+                    `;
                 }
-            } catch (e) {
-                const container = document.getElementById(`chart-${symbol}`);
-                if (container) container.innerHTML = '<div style="font-size: 11px; color: var(--down-color); line-height: 50px; text-align: center;">加载失败</div>';
+
+            } catch(e) {
+                console.error("Chart error", e);
             }
         }
 
-        function generateSparkline(data) {
-            const min = Math.min(...data);
-            const max = Math.max(...data);
-            const range = (max - min) || 1;
-            const width = 100;
-            const height = 40;
-            
-            const points = data.map((val, i) => {
-                const x = (i / (data.length - 1)) * width;
-                const y = height - ((val - min) / range) * height;
-                return `${x},${y}`;
-            }).join(' ');
-            
-            const isUp = data[data.length - 1] >= data[0];
-            const color = isUp ? 'var(--up-color)' : 'var(--down-color)';
-            const gradientId = `grad-${Math.random().toString(36).substr(2,9)}`;
-            
-            return `
-            <svg viewBox="0 -5 100 50" class="sparkline" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stop-color="${color}" stop-opacity="0.2" />
-                        <stop offset="100%" stop-color="${color}" stop-opacity="0" />
-                    </linearGradient>
-                </defs>
-                <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <polygon points="${points} 100,50 0,50" fill="url(#${gradientId})" />
-            </svg>`;
+        /* AI Modal Logic */
+        let currentAiStream = null;
+        const modal = document.getElementById('aiModal');
+        const modalTitle = document.getElementById('aiModalTitle');
+        const modalBody = document.getElementById('aiModalBody');
+
+        window.onclick = function(event) {
+            if (event.target == modal) closeAiModal();
         }
 
-        // 初始化加载
+        function openAiModal(symbol, name) {
+            symbol = symbol.toLowerCase();
+            modalTitle.textContent = `${name} (${symbol.toUpperCase()}) - DeepSeek 诊断`;
+            modalBody.innerHTML = `正在呼叫 AI 分析行情与微观盘口数据...<span class="cursor-blink"></span>`;
+            modal.classList.add('active');
+
+            if (currentAiStream) {
+                currentAiStream.close();
+            }
+
+            // SSE Request
+            currentAiStream = new EventSource(`http://localhost:8000/api/stock/${symbol}/analyze`);
+            let accumulatedText = "";
+
+            currentAiStream.onmessage = function(event) {
+                const textChunk = event.data.replace(/\\n/g, '\n'); 
+                accumulatedText += textChunk;
+                // Simple markdown parsing to make **bold** work
+                const formattedHtml = accumulatedText.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
+                modalBody.innerHTML = formattedHtml + '<span class="cursor-blink"></span>';
+                modalBody.scrollTop = modalBody.scrollHeight;
+            };
+
+            currentAiStream.onerror = function(err) {
+                currentAiStream.close();
+                currentAiStream = null;
+                modalBody.innerHTML = accumulatedText + '\n\n<span style="color:var(--down-color);">连接结束。</span>';
+            };
+        }
+
+        function closeAiModal() {
+            modal.classList.remove('active');
+            if (currentAiStream) {
+                currentAiStream.close();
+                currentAiStream = null;
+            }
+        }
+
+        // Initialize
+        loadStocks();
         fetchData();
+        
+        // Auto refresh
+        setInterval(fetchData, 10000);
     </script>
 </body>
 </html>
