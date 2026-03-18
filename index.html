@@ -275,7 +275,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>Web Stock 行情概览</h1>
+            <h1>Web Stock 行情概览 <span style="font-size:0.5em; color:var(--text-secondary);">v1.2 (AI & Proxy)</span></h1>
             <button class="refresh-btn" onclick="fetchData()">刷新数据</button>
         </header>
 
@@ -363,8 +363,10 @@
                 dashboard.innerHTML = '';
                 
                 data.forEach(item => {
-                    const changePct = parseFloat(item.change_percent);
-                    const price = parseFloat(item.price);
+                    const changePct = parseFloat(item['涨跌幅']);
+                    const price = parseFloat(item['最新价']);
+                    const name = item['名称'];
+                    const symbol = item['代码'];
                     
                     const isUp = changePct >= 0;
                     const changeClass = isUp ? 'up' : 'down';
@@ -375,29 +377,29 @@
                     card.innerHTML = `
                         <div class="stock-header">
                             <div class="stock-name-group">
-                                <div class="stock-name">${item.name}</div>
-                                <div class="stock-code">${item.symbol.toUpperCase()}</div>
+                                <div class="stock-name">${name}</div>
+                                <div class="stock-code">${symbol.toUpperCase()}</div>
                             </div>
                             <div class="change-badge ${changeClass}">
-                                ${changeSign}${item.change_percent}%
+                                ${changeSign}${changePct}%
                             </div>
                         </div>
                         <div class="price-section">
-                            <div class="price ${changeClass}">${item.price}</div>
+                            <div class="price ${changeClass}">${price.toFixed(2)}</div>
                         </div>
                         <div class="chart-container" style="height: 50px; margin-top: 10px;">
-                            <svg class="chart" id="chart-${item.symbol}" viewBox="0 -5 100 50" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
+                            <svg class="chart" id="chart-${symbol}" viewBox="0 -5 100 50" style="width: 100%; height: 100%; overflow: visible;" preserveAspectRatio="none">
                             </svg>
                         </div>
                         <div class="card-actions">
-                            <button class="btn-sm btn-ai" onclick="openAiModal('${item.symbol}', '${item.name}')">DeepSeek 诊断</button>
-                            <button class="btn-sm" onclick="removeStock('${item.symbol}')">移除</button>
+                            <button class="btn-sm btn-ai" onclick="openAiModal('${symbol}', '${name}')">DeepSeek 诊断</button>
+                            <button class="btn-sm" onclick="removeStock('${symbol}')">移除</button>
                         </div>
                     `;
                     dashboard.appendChild(card);
 
                     // Fetch and render the graph
-                    renderSparkline(item.symbol, isUp);
+                    renderSparkline(symbol, isUp);
                 });
             } catch (error) {
                 console.error('Error fetching data:', error);
