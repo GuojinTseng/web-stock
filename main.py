@@ -37,13 +37,17 @@ def apply_proxy_if_available():
         try:
             proxies, proxy_ip = get_proxy()
             proxy_url = proxies.get("https") or proxies.get("http")
-            if proxy_url:
-                os.environ["HTTP_PROXY"] = proxy_url
-                os.environ["HTTPS_PROXY"] = proxy_url
-                print(f"[Proxy Configured] IP: {proxy_ip}")
+            # We fetch a proxy but DO NOT inject it globally as it breaks Tencent API.
+            # Instead we'll leave it available if needed for specific DeepSeek calls.
+            # if proxy_url:
+            #     os.environ["HTTP_PROXY"] = proxy_url
+            #     os.environ["HTTPS_PROXY"] = proxy_url
+            #     print(f"[Proxy Configured] IP: {proxy_ip}")
         except Exception as e:
             print(f"[Proxy Error] {e}")
 
+# Call it on startup
+apply_proxy_if_available()
 # Configure deepseek via environment variable
 dp_key = os.environ.get("DEEPSEEK_API_KEY", "")
 if deepseek_client and dp_key:
@@ -64,7 +68,8 @@ async def get_market_data(symbols: str = ""):
             symbols = "sh600519,sz000858,sz000001"
             
         url = f"https://qt.gtimg.cn/q={symbols}"
-        res = requests.get(url, timeout=10)
+        # Force ignore proxy for this specific call to prevent hanging
+        res = requests.get(url, timeout=10, proxies={"http": None, "https": None})
         data = []
         for line in res.text.strip().split('\n'):
             if not line: continue
@@ -88,7 +93,8 @@ async def get_market_data(symbols: str = ""):
 async def get_intraday_data(symbol: str):
     try:
         url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={symbol}"
-        res = requests.get(url, timeout=10)
+        # Force ignore proxy for this specific call to prevent hanging
+        res = requests.get(url, timeout=10, proxies={"http": None, "https": None})
         json_data = res.json()
         
         if json_data['code'] != 0:
